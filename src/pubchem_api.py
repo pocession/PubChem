@@ -84,6 +84,9 @@ def get_pubchem_bioassay_data(cids, aid, max_retries=3, delay=0.3, batch_size=10
     all_data = []
 
     # Generate batches of CIDs
+    ## Note for bioassay data, it is very common that a CID does not have any record in a given AID
+    ## Therefore the error message printing function is disable
+    ## Maybe it is better to add a verbose=FALSE argument 
     cid_batches = generate_batches(cids, batch_size)
     
     for batch_index, batch in enumerate(cid_batches):
@@ -101,22 +104,29 @@ def get_pubchem_bioassay_data(cids, aid, max_retries=3, delay=0.3, batch_size=10
                         all_data.append(parsed_data)
                         success = True
                         break
+                    elif response.status_code == 404:
+                        all_data.append({
+                        "CID": cid,
+                        "mean": 'NA',
+                        "stddev": 'NA'
+                        })
+                        time.sleep(delay)
                     else:
-                        print(f"Attempt {attempt + 1} failed for AID: {aid}, CID: {cid}. Retrying...")
+                        # print(f"Attempt {attempt + 1} failed for AID: {aid}, CID: {cid}. Retrying...")
                         time.sleep(delay)  # Small delay before retrying
                 except requests.ConnectionError as e:
-                        print(f"Connection error for AID: {aid}, CID: {cid}, attempt {attempt + 1}. Retrying...")
+                        # print(f"Connection error for AID: {aid}, CID: {cid}, attempt {attempt + 1}. Retrying...")
                         time.sleep(delay)
                 except Exception as e:
-                        print(f"An error occurred for AID: {aid}, CID: {cid}: {e}")
+                        # print(f"An error occurred for AID: {aid}, CID: {cid}: {e}")
                         break  # Exit the retry loop on unexpected errors
             
             if not success:
-                print(f"Failed to retrieve data for AID: {aid}, CID: {cid} after {max_retries} attempts. Returning NA.")
+                # print(f"Failed to retrieve data for AID: {aid}, CID: {cid} after {max_retries} attempts. Returning NA.")
                 all_data.append({
-                    "AID": aid,
                     "CID": cid,
-                    "Data": 'NA'
+                    "mean": 'NA',
+                    "stddev": 'NA'
                 })
                 time.sleep(delay)
                 
@@ -134,8 +144,7 @@ def parse_bioassay_data(raw_data, cid):
     - A dictionary containing the extracted data.
     """
     lines = raw_data.strip().split('\n')
-    header = lines[0].split(',')
-    data = lines[3].split(',')
+    data = lines[4].split(',')
 
     # Extract the 9th and 10th columns
     mean = data[8]
@@ -143,8 +152,8 @@ def parse_bioassay_data(raw_data, cid):
 
     return {
         "CID": cid,
-        header[8]: mean,
-        header[9]: stddev
+        'mean': mean,
+        'stddev': stddev
     }
 
 def generate_batches(data, batch_size):
