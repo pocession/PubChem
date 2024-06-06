@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import time
+import os
 
 def get_pubchem_data(cids, max_retries=3, delay=0.3, batch_size=1000):
     """
@@ -27,22 +28,30 @@ def get_pubchem_data(cids, max_retries=3, delay=0.3, batch_size=1000):
         for cid in batch:
             success = False
             for attempt in range(max_retries):
-                response = requests.get(base_url.format(cid))
-                if response.status_code == 200:
-                    data = response.json()
-                    properties = data['PropertyTable']['Properties'][0]
-                    all_data.append({
-                        "CID": cid,
-                        "Molecular Formula": properties.get('MolecularFormula'),
-                        "Molecular Weight": properties.get('MolecularWeight'),
-                        "Canonical SMILES": properties.get('CanonicalSMILES'),
-                        "InChIKey": properties.get('InChIKey')
-                    })
-                    success = True
-                    break
-                else:
-                    print(f"Attempt {attempt + 1} failed for CID: {cid}. Retrying...")
-                    time.sleep(1)  # Small delay before retrying
+                try:
+                    response = requests.get(base_url.format(cid))
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        properties = data['PropertyTable']['Properties'][0]
+                        all_data.append({
+                            "CID": cid,
+                            "Molecular Formula": properties.get('MolecularFormula'),
+                            "Molecular Weight": properties.get('MolecularWeight'),
+                            "Canonical SMILES": properties.get('CanonicalSMILES'),
+                            "InChIKey": properties.get('InChIKey')
+                        })
+                        success = True
+                        break
+                    else:
+                        print(f"Attempt {attempt + 1} failed for CID: {cid}. Retrying...")
+                        time.sleep(delay)  # Small delay before retrying
+                except requests.ConnectionError as e:
+                    print(f"Connection error for CID: {cid}, attempt {attempt + 1}. Retrying...")
+                    time.sleep(delay)
+                except Exception as e:
+                    print(f"An error occurred for CID: {cid}: {e}")
+                    break  # Exit the retry loop on unexpected errors
             
             if not success:
                 print(f"Failed to retrieve data for CID: {cid} after {max_retries} attempts. Returning NA.")
@@ -53,10 +62,8 @@ def get_pubchem_data(cids, max_retries=3, delay=0.3, batch_size=1000):
                     "Canonical SMILES": 'NA',
                     "InChIKey": 'NA'
                 })
+                time.sleep(delay)
             
-            # Add delay to comply with PubChem's rate limit
-            time.sleep(delay)
-    
     return all_data
 
 def generate_batches(data, batch_size):
@@ -72,17 +79,26 @@ def generate_batches(data, batch_size):
     """
     return [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
 
-def save_to_dataframe(data):
+def save_to_dataframe(data, output_file=None):
     """
-    Converts the list of dictionaries to a Pandas DataFrame.
+    Converts the list of dictionaries to a Pandas DataFrame and saves it to a CSV file.
     
     Parameters:
     - data: List of dictionaries containing the retrieved data.
+    - output_file: Path to the output CSV file. If None, the DataFrame will be saved to 'pubchem_data.csv' in the current directory.
     
     Returns:
-    - df: Pandas DataFrame with the data.
+    - output_file: Path to the output CSV file.
     """
     df = pd.DataFrame(data)
+
+    if (output_file == None):
+        output_file = os.getwcd() + "/../Example/pubchem_data.csv"
+
+    with open(output_file, 'w') as f:
+        f.write(df)
+    df.to_csv(output_file, index=False)
+    print(f"DataFrame saved to CSV file: {output_file}")
     return df
 
 def read_cids_from_csv(file_path):
